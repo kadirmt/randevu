@@ -75,7 +75,8 @@ try {
             break;
 
         case 'panel':
-            View::render('panel/soon', [], 'none');
+            Csrf::verifyOrAbort();
+            (new \App\Controllers\PanelController())->route($ctx['path'], $method);
             break;
 
         case 'sys':

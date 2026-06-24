@@ -65,6 +65,56 @@ final class Booking
         return ['ok' => true, 'appointment' => $appt, 'service' => $service, 'staff' => $staff, 'token' => $token];
     }
 
+    /**
+     * Sahip tarafından manuel randevu. $override=true ise dolu slota da yazılır
+     * (EXCLUDE kısıtından muaf, panelde KIRMIZI). $override=false ise normal
+     * randevu gibi çakışma kontrolüne tabidir.
+     * @return array{ok:bool,error?:string,id?:int}
+     */
+    public static function createManual(int $shopId, int $staffId, int $serviceId, string $startIso,
+        string $name, string $surname, ?string $phoneE164, bool $override): array
+    {
+        $service = Database::fetch(
+            'SELECT duration_min, price FROM services WHERE id=:i AND shop_id=:s',
+            [':i' => $serviceId, ':s' => $shopId]
+        );
+        if (!$service) return ['ok' => false, 'error' => 'Hizmet bulunamadı.'];
+        $staff = Database::fetch('SELECT id FROM staff WHERE id=:i AND shop_id=:s', [':i' => $staffId, ':s' => $shopId]);
+        if (!$staff) return ['ok' => false, 'error' => 'Personel bulunamadı.'];
+
+        $zone = new \DateTimeZone('Europe/Istanbul');
+        try {
+            $start = new \DateTimeImmutable($startIso, $zone);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Geçersiz tarih/saat.'];
+        }
+        $end   = $start->modify('+' . (int) $service['duration_min'] . ' minutes');
+        $token = Helpers::token(16);
+
+        try {
+            $id = Database::insertReturningId(
+                "INSERT INTO appointments
+                   (shop_id, staff_id, service_id, customer_name, customer_surname, customer_phone,
+                    service_price, starts_at, ends_at, status, source, is_override, cancel_token)
+                 VALUES (:sh,:st,:sv,:n,:su,:ph,:pr,:s,:e,'booked','manual',:ov,:tok)
+                 RETURNING id",
+                [
+                    ':sh' => $shopId, ':st' => $staffId, ':sv' => $serviceId,
+                    ':n' => $name, ':su' => $surname, ':ph' => $phoneE164 ?? '',
+                    ':pr' => $service['price'], ':s' => $start->format('c'), ':e' => $end->format('c'),
+                    ':ov' => $override ? 'true' : 'false', ':tok' => $token,
+                ]
+            );
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23P01' || str_contains($e->getMessage(), 'no_overlap_per_staff')) {
+                return ['ok' => false, 'error' => 'Bu saat dolu. Araya sıkıştırmak için "Üzerine ekle" seçeneğini işaretleyin.'];
+            }
+            error_log('[randevu] manual insert: ' . $e->getMessage());
+            return ['ok' => false, 'error' => 'Randevu eklenemedi.'];
+        }
+        return ['ok' => true, 'id' => $id];
+    }
+
     /** Şifresiz iptal. @return array{ok:bool,error?:string,appointment?:array} */
     public static function cancelByToken(string $token): array
     {
