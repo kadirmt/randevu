@@ -1,0 +1,21 @@
+# --- Sırlar / yapılandırma (ASLA commit edilmez) ---
+/config.php
+.env
+*.env
+.dbpass*
+.hashes*
+*.tmp
+
+# --- Çalışma zamanı (içerik commit edilmez, klasör korunur) ---
+/storage/cache/*
+/storage/sessions/*
+/storage/logs/*
+!/storage/**/.gitkeep
+
+# --- Kullanıcı yüklemeleri ---
+/public/uploads/
+
+# --- OS / editör ---
+.DS_Store
+Thumbs.db
+*.swp
